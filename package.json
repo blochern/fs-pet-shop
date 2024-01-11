@@ -23,6 +23,7 @@
   },
   "homepage": "https://github.com/gSchool/fs-pet-shop#readme",
   "dependencies": {
-    "nodemon": "^1.9.1"
+    "http": "^0.0.1-security",
+    "nodemon": "^3.0.2"
   }
 }

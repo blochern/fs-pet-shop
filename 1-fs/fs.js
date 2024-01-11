@@ -13,7 +13,7 @@ const petshop = {
             // if the index is undefined, display all pets
             if (index === undefined) {
                 console.log(`-- Displaying all pets --`)
-                console.log(pets); process.exit();
+                console.log(pets); process.exit(0);
             }
             // if the index is defined, parse it
             else {
@@ -23,13 +23,13 @@ const petshop = {
                     // output an error
                     console.log(`-- Pet at index ${i} not found --`)
                     console.error("Usage: node fs.js read int(INDEX)");
-                    process.exitCode = 1; process.exit();
+                    process.exit(1);
                 }
                 // if it's a valid index
                 else {
                     // output just that pet
                     console.log(`-- Displaying pet at index ${i} --`)
-                    console.log(pets[i]); process.exit();
+                    console.log(pets[i]); process.exit(0);
                 }
             }
         });
@@ -38,7 +38,7 @@ const petshop = {
         // if any of the given values are bad, end the process
         if (isNaN(parseInt(age)) || !kind || !name) {
             console.error("Usage: node fs.js create int(AGE) string(KIND() string(NAME)");
-            process.exitCode = 1; process.exit();
+            process.exit(1);
         }
         // create a newPet object using the data passed in
         let newPet = { age: parseInt(age), kind: kind, name: name }
@@ -68,7 +68,7 @@ const petshop = {
         // if there's no index, display usage
         if (index === undefined) {
             console.error("Usage: node fs.js destroy int(INDEX)");
-            process.exitCode = 1; process.exit();
+            process.exit(1);
         }
         // parse the index if it exists
         let i = parseInt(index);
@@ -85,7 +85,7 @@ const petshop = {
             if (!pets[i]) {
                 console.error(`Did not find pet at index ${i}`);
                 console.error("Usage: node fs.js destroy int(INDEX)");
-                process.exitCode = 1; process.exit();
+                process.exit(1);
             }
             // otherwise, delete the item at index i using .splice(i, 1)
             else {
@@ -100,7 +100,7 @@ const petshop = {
                     // otherwise, log the removed pet
                     else {
                         console.log(`Removed the pet at index ${i}`);
-                        console.log(deleted); process.exit();
+                        console.log(deleted); process.exit(0);
                     }
                 });
             }
