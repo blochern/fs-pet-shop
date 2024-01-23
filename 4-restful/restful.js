@@ -1,9 +1,6 @@
 // express, for server routes
 import express from "express";
 
-// fs for reading pets.json (remove)
-import fs from "fs";
-
 // dotenv for environment variables (for later use)
 import dotenv from "dotenv";
 
@@ -43,7 +40,7 @@ app.get('/pets', (req, res) => {
                 res.status(200).json(results.rows);
             }
             catch (error) {
-                res.status(500).send("Internal fucky wucky");
+                res.status(500).send(`Internal Server Error -- failed while trying to 'select * from pets'`); return;
             }
         });
 });
@@ -56,14 +53,14 @@ app.get('/pets/:id', (req, res) => {
 
     // ensure the id is a number
     if (isNaN(parseInt(id))) {
-        res.status(400).send("Bad request -- index must be a number"); return;
+        res.status(400).send(`Bad request -- '${id}' is not an integer`); return;
     }
 
     pool.query(`select * from pets where id = ${id}`)
         .then((results) => {
             try {
-                if (results.rowCount === 0) {
-                    res.status(404).send("Can't find it"); return;
+                if (results.rowCount < 1) {
+                    res.status(404).send(`Not found -- pet at index ${id}`); return;
                 }
                 else {
                     res.status(200).json(results.rows[0]); return;
@@ -71,7 +68,7 @@ app.get('/pets/:id', (req, res) => {
             }
             catch (error) {
                 console.error(error.message);
-                res.status(500).send("Internal oopsie poopsie"); return;
+                res.status(500).send(`Internal Server Error -- failed while trying to 'select * from pets'`); return;
             }
         });
 });
@@ -82,18 +79,19 @@ app.post('/pets', (req, res) => {
     const { age, kind, name } = req.body;
 
     // validate data
-    if (isNaN(+age) || !kind || !name) {
-        res.status(400).send("Bad request -- include age, kind, name"); return;
+    if (isNaN(parseInt(age)) || !kind || !name) {
+        res.status(400).send('Bad request -- POST request requires name (any), kind (any), age (integer)'); return;
     }
 
-    pool.query(`INSERT INTO pets (name, age, kind) VALUES ('${name}', ${age}, '${kind}') RETURNING *`)
+    pool.query(`INSERT INTO pets (name, age, kind) VALUES ($1, $2, $3) RETURNING *`,
+        [name, age, kind])
         .then((results) => {
             try {
                 res.status(201).json(results.rows[0]); return;
             }
             catch (error) {
                 console.error(error.message);
-                res.status(500).send("Internal oopsie poopsie"); return;
+                res.status(500).send(`Internal Server Error -- failed while trying to 'insert into pets'`); return;
             }
         });
 
@@ -101,34 +99,41 @@ app.post('/pets', (req, res) => {
 
 // UPDATE ONE route with partial data (patch)
 app.patch('/pets/:id', (req, res) => {
-    // destruct the id from request parameters
+    // destruct the id off of the request parameters
     const { id } = req.params;
 
-    // destruct name, age, kind from request body
-    const { name, age, kind } = req.body
+    // destruct name, kind, age off of the request body
+    const { name, age, kind } = req.body;
 
-    // check to ensure id is a number and age (if it exists) is a number
-    if (age !== undefined && isNaN(parseInt(age)) || isNaN(parseInt(id))) {
-        res.status(400).send('Either id or age is not an integer'); return;
+    // if age exists AND it's not an integer, kick back the request
+    if (age !== undefined && isNaN(parseInt(age))) {
+        res.status(400).send(`Bad Request -- age must be an integer, if it exists`); return;
     }
 
-    // query the data pool using COALESCE to update the values that exist
-    pool.query(`update pets set name = coalesce($1, name), age = coalesce($2, age), kind = coalesce($3, kind) where id = $4 returning *`,
+    // if the id isn't an integer, kick back the request
+    if (isNaN(parseInt(id))) {
+        res.status(400).send(`Bad Request -- id must be an integer`); return;
+    }
+
+    // query our pool
+    pool.query(`UPDATE pets SET name = coalesce($1, name), age = coalesce($2, age), kind = coalesce($3, kind) WHERE id = $4 RETURNING *`,
         [name, age, kind, id])
         .then((results) => {
             try {
+                // if we don't get any results back, then send a 404
                 if (results.rowCount < 1) {
-                    res.status(404).send(`Pet at id ${id} not found`); return;
+                    res.status(404).send(`Not found -- pet at index ${id} was not found`); return;
                 }
+                // if we do get data back
                 else {
                     res.status(200).json(results.rows[0]); return;
                 }
             }
             catch (err) {
                 console.error(err.message);
-                res.status(500).send('Error trying to update pets'); return;
+                res.status(500).send(`Internal Server Error -- failed while trying to 'update pets'`); return;
             }
-        })
+        });
 });
 
 // UPDATE ONE route with all data (put)
@@ -149,7 +154,7 @@ app.put('/pets/:id', (req, res) => {
         .then((results) => {
             try {
                 if (!results.rows[0]) {
-                    res.status(404).send(`Could not find pet at index ${id}`); return;
+                    res.status(404).send(`Not found -- pet at index ${id}`); return;
                 }
                 else {
                     res.status(200).send(results.rows[0]); return;
@@ -160,54 +165,6 @@ app.put('/pets/:id', (req, res) => {
                 res.status(500).send('Error trying to UPDATE pets'); return;
             }
         });
-});
-
-// DELETE ONE route
-app.delete('/pets/:id', (req, res) => {
-    // destruct the id from request object
-    const { id } = req.params;
-
-    // ensure the id is a number
-    if (isNaN(parseInt(id))) {
-        res.status(400).send("Bad request -- index must be a number"); return;
-    }
-
-    // attempt to read the file
-    fs.readFile('../pets.json', 'utf-8', (error, json) => {
-
-        // handle if there's an error reading the file
-        if (error) {
-            console.error(error.message);
-            res.status(500).send('Error reading pets.json file'); return;
-        }
-
-        // if reading the file went well
-        else {
-            // parse the array into something usable
-            let array = JSON.parse(json);
-
-            // check if id is out of bounds
-            if (!array[id]) {
-                res.status(404).send(`Could not find item at index ${id}`); return;
-            }
-
-            // if id is in bounds, delete the element
-            else {
-                let deleted = array.splice(id, 1);
-
-                // attempt to write to the file
-                fs.writeFile('../pets.json', JSON.stringify(array), (err) => {
-                    // error writing to file
-                    if (error) {
-                        console.error(error.message);
-                        res.status(500).send("Error writing to file"); return;
-                    }
-                    // otherwise, send the deleted pet back as JSON
-                    res.status(200).send(JSON.stringify(deleted)); return;
-                });
-            }
-        }
-    });
 });
 
 // tell the server to listen
