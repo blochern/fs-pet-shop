@@ -101,77 +101,34 @@ app.post('/pets', (req, res) => {
 
 // UPDATE ONE route with partial data (patch)
 app.patch('/pets/:id', (req, res) => {
-    // destruct the id from req.params
+    // destruct the id from request parameters
     const { id } = req.params;
 
-    // ensure the id is a number
-    if (isNaN(parseInt(id))) {
-        res.status(400).send("Bad request -- index must be a number"); return;
+    // destruct name, age, kind from request body
+    const { name, age, kind } = req.body
+
+    // check to ensure id is a number and age (if it exists) is a number
+    if (age !== undefined && isNaN(parseInt(age)) || isNaN(parseInt(id))) {
+        res.status(400).send('Either id or age is not an integer'); return;
     }
 
-    // create our patchedPet object
-    const patchedPet = {};
-
-    // if we don't have any data in req.body, kick back the request
-    if (!req.body.name && !req.body.kind && req.body.age === undefined) {
-        res.status(400).send("Bad request -- include age, kind, or name"); return;
-    }
-
-    // if the values do exist, put them into our patchedPet object
-    for (let key in req.body) {
-        // if the key isn't 'age', don't worry about checking to see if it's a number
-        if (key !== 'age') {
-            patchedPet[key] = req.body[key];
-        }
-        // if it is, we need to make sure it's a number first
-        else {
-            if (isNaN(parseInt(req.body.age))) {
-                res.status(400).send("Bad request -- age must be a number"); return;
-            }
-            else {
-                patchedPet.age = req.body.age;
-            }
-        }
-    }
-
-    // attempt to read our pet from the db to fill in any missing patchedPet values
-    pool.query(`SELECT * FROM pets WHERE id = ${id}`)
+    // query the data pool using COALESCE to update the values that exist
+    pool.query(`update pets set name = coalesce($1, name), age = coalesce($2, age), kind = coalesce($3, kind) where id = $4 returning *`,
+        [name, age, kind, id])
         .then((results) => {
             try {
-                // if there are no results, send a 404
-                if (!results.rows[0]) {
-                    res.status(404).send("Can't find it"); return;
+                if (results.rowCount < 1) {
+                    res.status(404).send(`Pet at id ${id} not found`); return;
                 }
-                // otherwise, fill the rest of the patchedPet object
                 else {
-                    for (let key in results.rows[0]) {
-                        if (patchedPet[key] === undefined) {
-                            patchedPet[key] = results.rows[0][key];
-                        }
-                    }
+                    res.status(200).json(results.rows[0]); return;
                 }
-                // now that our patchedPet object is complete, we can attempt to write to db
-                pool.query(`update pets set name = '${patchedPet.name}', age = '${patchedPet.age}', kind = '${patchedPet.kind}' where id = ${id} returning *`)
-                    .then((results) => {
-                        try {
-                            if (!results.rows[0]) {
-                                res.status(404).send(`Could not find pet at index ${id}`); return;
-                            }
-                            else {
-                                res.status(200).send(results.rows[0]); return;
-                            }
-                        }
-                        catch (err) {
-                            console.error(err.message);
-                            res.status(500).send('Error attempting to write to pets db'); return;
-                        }
-                    });
             }
             catch (err) {
                 console.error(err.message);
-                res.status(500).send("Error trying to read pets db"); return;
+                res.status(500).send('Error trying to update pets'); return;
             }
-        });
+        })
 });
 
 // UPDATE ONE route with all data (put)
@@ -189,20 +146,20 @@ app.put('/pets/:id', (req, res) => {
 
     // if everything is good, we can attempt to read our data pool
     pool.query(`update pets set name = '${name}', age = ${age}, kind = '${kind}' where id = ${id} returning *`)
-    .then((results) => {
-        try {
-            if (!results.rows[0]) {
-                res.status(404).send(`Could not find pet at index ${id}`); return;
-            } 
-            else {
-                res.status(200).send(results.rows[0]); return;
+        .then((results) => {
+            try {
+                if (!results.rows[0]) {
+                    res.status(404).send(`Could not find pet at index ${id}`); return;
+                }
+                else {
+                    res.status(200).send(results.rows[0]); return;
+                }
             }
-        }
-        catch (err) {
-            console.error(err.message);
-            res.status(500).send('Error trying to UPDATE pets'); return;
-        }
-    });
+            catch (err) {
+                console.error(err.message);
+                res.status(500).send('Error trying to UPDATE pets'); return;
+            }
+        });
 });
 
 // DELETE ONE route
